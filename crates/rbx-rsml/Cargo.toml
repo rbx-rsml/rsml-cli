@@ -1,0 +1,10 @@
+[package]
+name = "rbx_rsml"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+logos = "0.14.2"
+rbx_types = "1.10.0"
+serde_json = "1.0.132"
+colors-transform = "0.2.11"

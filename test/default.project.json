@@ -1,0 +1,10 @@
+{
+    "name": "rsml-cli",
+    "tree": {
+        "$className": "DataModel",
+
+        "ServerScriptService": {
+            "$path": "src"
+        }
+    }
+}

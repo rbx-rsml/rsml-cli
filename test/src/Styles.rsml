@@ -1,0 +1,4 @@
+TextInput {
+    BackgroundColor3 = css:red;
+}
+

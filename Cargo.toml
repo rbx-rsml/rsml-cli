@@ -1,0 +1,15 @@
+[package]
+name = "rsml-cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rbx_rsml = { path = "crates/rbx-rsml" }
+notify = "8.0.0"
+futures = "0.3.31"
+log = "0.4.25"
+env_logger = "0.11.6"
+rbx_types = "1.10.0"
+regex = "1.11.1"
+normalize-path = "0.2.1"
+sha2 = "0.10.8"
