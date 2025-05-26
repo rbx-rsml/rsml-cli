@@ -6,6 +6,8 @@ use rbx_rsml::{lex_rsml, lex_rsml_derives, lex_rsml_macros, parse_rsml, parse_rs
 use serde::{ser::SerializeStruct, Deserialize, Serialize, Serializer};
 use serde_json::{json, ser::PrettyFormatter, Serializer as JsonSerializer};
 
+use crate::WatcherContext;
+
 
 #[derive(Deserialize)]
 pub struct StyleSheet {
@@ -118,7 +120,7 @@ fn convert_children(parsed_rsml: &mut TreeNodeGroup, children: Vec<usize>) -> Ve
 }
 
 
-pub fn rsml_to_model_json(path: &Path, project_path: &Path) -> String {
+pub fn rsml_to_model_json(path: &Path, watcher: &mut WatcherContext) -> String {
     let parent_path = path.parent().unwrap();
     let content = fs::read_to_string(path).unwrap();
 
@@ -129,15 +131,17 @@ pub fn rsml_to_model_json(path: &Path, project_path: &Path) -> String {
     let derives_children = derives.iter()
         .map(|derive| {
             let derive = if !derive.ends_with(".rsml") { &format!("{}.rsml", derive) } else { &derive };
-            let derive_path = parent_path.join(derive);
+            let derive_path = parent_path.join(Path::new(derive).normalize());
 
             if let Ok(derive_content) = fs::read_to_string(&derive_path) {
                 parse_rsml_macros(&mut macro_group, &mut lex_rsml_macros(&derive_content));
             };
 
+            watcher.dependencies.insert(derive_path.clone(), path.to_path_buf());
+
             Child::StyleDerive(StyleDerive {
                 name: derive_path.file_stem().unwrap().to_str().unwrap().to_string(),
-                stylesheet: derive_path.normalize().strip_prefix(project_path).unwrap().to_str().unwrap().to_string()
+                stylesheet: derive_path.strip_prefix(&watcher.input_dir).unwrap().to_str().unwrap().to_string()
             })
         })
         .collect::<Vec<Child>>();
@@ -151,7 +155,7 @@ pub fn rsml_to_model_json(path: &Path, project_path: &Path) -> String {
     children.extend(derives_children);
 
     let style_sheet = StyleSheet {
-        id: path.normalize().strip_prefix(project_path).unwrap().to_str().unwrap().to_string(),
+        id: path.normalize().strip_prefix(&watcher.input_dir).unwrap().to_str().unwrap().to_string(),
         attributes: rsml_root.attributes,
         children: children,
     };

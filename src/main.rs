@@ -1,18 +1,21 @@
 mod rsml_to_model_json;
 use guarded::guarded_unwrap;
-use rsml_to_model_json::{rsml_to_model_json, StyleSheet};
+use multimap::MultiMap;
+use rsml_to_model_json::rsml_to_model_json;
+use clap::{Parser, Subcommand};
 
-use std::{ffi::OsStr, fs, path::{Path, PathBuf}, sync::Arc};
+use std::{env::current_dir, ffi::OsStr, fs, io::{stdout, BufWriter, Write}, path::{Path, PathBuf}, sync::Arc};
 
 use crossbeam_channel::{select, RecvError, Sender};
 use jod_thread::JoinHandle;
 use memofs::{ReadDir, StdBackend, Vfs, VfsEvent};
 use normalize_path::NormalizePath;
 
-struct WatcherContext {
-    vfs: Arc<Vfs>,
-    input_dir: PathBuf,
-    output_dir: PathBuf,
+pub struct WatcherContext {
+    pub vfs: Arc<Vfs>,
+    pub input_dir: PathBuf,
+    pub output_dir: PathBuf,
+    pub dependencies: MultiMap<PathBuf, PathBuf>
 }
 
 impl WatcherContext {
@@ -37,19 +40,28 @@ impl WatcherContext {
         
         // applies utils from file.
         } else if is_file && path.starts_with(&self.input_dir) && path.extension() == Some(OsStr::new("rsml")) {
-            self.create_file(path);
+            self.create_file(&path);
         }
     }
 
-    fn create_file(&mut self, path: PathBuf) {
+    fn create_file(&mut self, path: &Path) {
         let output_path = &{
             let mut output_path = self.output_dir.join(path.strip_prefix(&self.input_dir).unwrap());
             output_path.set_extension("model.json");
             output_path
         };
 
-        fs::write(output_path, rsml_to_model_json(&path, &self.input_dir)).unwrap();
+        let _ = fs::create_dir_all(&output_path.parent().unwrap());
+
+        fs::write(output_path, rsml_to_model_json(&path, self)).unwrap();
         let _ = fs::rename(output_path, output_path);
+
+        // Rebuilds dependants.
+        // TODO: find a way to avoid cloning here.
+        let dependants = guarded_unwrap!(self.dependencies.get_vec(path), return);
+        for dependant in dependants.clone() {
+            self.create_file(&dependant);
+        }
     }
 
     fn remove_file(&mut self, mut path: PathBuf) {
@@ -77,15 +89,15 @@ impl WatcherContext {
                 
             // Creates the output for the current file.
             } else if path.is_file() && path.extension() == Some(OsStr::new("rsml")) {
-                self.create_file(path.canonicalize().unwrap());
+                self.create_file(&path.canonicalize().unwrap());
             }
         }
     }
 
     fn new(
         vfs: Vfs, 
-        input_dir: &Path,
-        output_dir: &Path
+        input_dir: PathBuf,
+        output_dir: PathBuf
     ) -> Self {
         let input_dir = input_dir.canonicalize().unwrap();
         let output_dir = output_dir.canonicalize().unwrap();
@@ -93,7 +105,8 @@ impl WatcherContext {
         Self {
             vfs: Arc::new(vfs),
             input_dir,
-            output_dir
+            output_dir,
+            dependencies: MultiMap::new()
         }
     }
 }
@@ -114,9 +127,6 @@ impl Watcher {
         let job_thread: JoinHandle<Result<(), RecvError>> = jod_thread::Builder::new()
             .name("ChangeProcessor thread".to_owned())
             .spawn(move || {
-                println!("started");
-                //log::trace!("ChangeProcessor thread started");
-
                 loop {
                     select! {
                         recv(vfs_receiver) -> event => {
@@ -132,7 +142,7 @@ impl Watcher {
                     }
                 }
             })
-            .expect("Could not start ChangeProcessor thread");
+            .expect("Could not start thread");
 
 
         Self {
@@ -142,20 +152,51 @@ impl Watcher {
     }
 }
 
+#[derive(Parser)]
+#[command(name = "CLI")]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    Run {
+        #[arg(value_enum, required = true)]
+        input: PathBuf,
+
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+}
+
 fn main() {
-    let input_dir = &Path::new("./project/src");
-    let output_dir = &Path::new("./project/src");
+    let curr_dir = current_dir().unwrap();
 
-    let vfs = Vfs::new(StdBackend::new());
+    let cli = Cli::parse();
 
-    let mut context = WatcherContext::new(vfs, input_dir, output_dir);
+    match cli.command {
+        Commands::Run { input, output } => {
+            let input_dir = curr_dir.join(input);
+            let output_dir = output.unwrap_or(input_dir.clone());
+            
+            let _ = fs::create_dir_all(&input_dir);
+            let _ = fs::create_dir_all(&output_dir);
 
-    let initial_dir = context.vfs.read_dir(input_dir);
-    context.vfs.set_watch_enabled(false);
+            let vfs = Vfs::new(StdBackend::new());
+            let mut context = WatcherContext::new(vfs, input_dir, output_dir);
 
-    context.create_initial(initial_dir);
+            let initial_dir = context.vfs.read_dir(&context.input_dir);
+            context.vfs.set_watch_enabled(false);
 
-    let _watcher = Watcher::start(context);
+            context.create_initial(initial_dir);
+
+            let mut stdout = stdout();
+            let _ = writeln!(stdout, "RSML CLI Running!");
+
+            let _watcher = Watcher::start(context);
     
-    std::thread::park();
+            std::thread::park();
+        }
+    }
 }

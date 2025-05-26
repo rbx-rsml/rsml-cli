@@ -15,3 +15,5 @@ jod-thread = "1.0.0"
 normalize-path = "0.2.1"
 notify = "8.0.0"
 fs-err = "2.3.0"
+multimap = "0.10.1"
+clap = { version = "4.5.38", features = ["derive"] }
