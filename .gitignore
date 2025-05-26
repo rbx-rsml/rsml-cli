@@ -1,0 +1,6 @@
+/target
+/project
+
+# MacOS file system clutter.
+._*
+.DS_STORE
