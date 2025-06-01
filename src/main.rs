@@ -4,7 +4,7 @@ use multimap::MultiMap;
 use rsml_to_model_json::rsml_to_model_json;
 use clap::{Parser, Subcommand};
 
-use std::{env::current_dir, ffi::OsStr, fs, io::{stdout, BufWriter, Write}, path::{Path, PathBuf}, sync::Arc};
+use std::{env::current_dir, ffi::OsStr, fs, io::{stdout, Write}, path::{Path, PathBuf}, sync::Arc};
 
 use crossbeam_channel::{select, RecvError, Sender};
 use jod_thread::JoinHandle;

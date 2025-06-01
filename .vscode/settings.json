@@ -1,3 +1,6 @@
 {
+    "luau-lsp.completion.enabled": false,
+    "luau-lsp.completion.enableFragmentAutocomplete": true,
+    "luau-lsp.fflags.enableNewSolver": true
 
 }
