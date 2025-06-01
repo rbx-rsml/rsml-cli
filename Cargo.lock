@@ -802,9 +802,9 @@ dependencies = [
 
 [[package]]
 name = "rbx-rsml"
-version = "0.1.6"
+version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2081663211790c9631e1f833664112831f6655d9f349a4cdcb73ae3210793bf"
+checksum = "4799b39b915e283040d550bc4d3937c7998bb634f3a82bdbad5ac54360afd912"
 dependencies = [
  "guarded",
  "indexmap",
@@ -932,7 +932,7 @@ dependencies = [
 
 [[package]]
 name = "rsml-cli"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "clap",
  "crossbeam-channel",
