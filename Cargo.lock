@@ -802,9 +802,9 @@ dependencies = [
 
 [[package]]
 name = "rbx-rsml"
-version = "0.1.7"
+version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4799b39b915e283040d550bc4d3937c7998bb634f3a82bdbad5ac54360afd912"
+checksum = "48f5b1f36b0013a8fe59c513dc1cfef7e88e6931ae4791e51ad363add8d92d61"
 dependencies = [
  "guarded",
  "indexmap",
@@ -862,9 +862,9 @@ dependencies = [
 
 [[package]]
 name = "rbx_types_ops"
-version = "0.0.9"
+version = "0.0.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "774da5e51acfa94bc862e4a6d57e568c52fe590149df3b85552e6cb3b744323c"
+checksum = "c4cc2b6a46ba885dc8d0ede52c02ac1919c1ccc04d54b3d584f9348149729103"
 dependencies = [
  "num-traits",
  "rbx_types",
