@@ -2,7 +2,7 @@ mod rsml_to_model_json;
 use guarded::guarded_unwrap;
 use multimap::MultiMap;
 use rsml_to_model_json::rsml_to_model_json;
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, crate_version};
 
 use std::{env::current_dir, ffi::OsStr, fs, io::{stdout, Write}, path::{Path, PathBuf}, sync::Arc};
 
@@ -96,8 +96,8 @@ impl WatcherContext {
 
     fn new(
         vfs: Vfs, 
-        input_dir: PathBuf,
-        output_dir: PathBuf
+        input_dir: &Path,
+        output_dir: &Path
     ) -> Self {
         let input_dir = input_dir.canonicalize().unwrap();
         let output_dir = output_dir.canonicalize().unwrap();
@@ -161,13 +161,15 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    Run {
+    Watch {
         #[arg(value_enum, required = true)]
         input: PathBuf,
 
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
+
+    Version
 }
 
 fn main() {
@@ -176,7 +178,7 @@ fn main() {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Run { input, output } => {
+        Commands::Watch { input, output } => {
             let input_dir = curr_dir.join(input);
             let output_dir = output.unwrap_or(input_dir.clone());
             
@@ -184,7 +186,7 @@ fn main() {
             let _ = fs::create_dir_all(&output_dir);
 
             let vfs = Vfs::new(StdBackend::new());
-            let mut context = WatcherContext::new(vfs, input_dir, output_dir);
+            let mut context = WatcherContext::new(vfs, &input_dir, &output_dir);
 
             let initial_dir = context.vfs.read_dir(&context.input_dir);
             context.vfs.set_watch_enabled(false);
@@ -192,11 +194,19 @@ fn main() {
             context.create_initial(initial_dir);
 
             let mut stdout = stdout();
-            let _ = writeln!(stdout, "RSML CLI Running!");
+            let _ = writeln!(stdout, "RSML CLI is now watching {:#?}.", input_dir.as_os_str());
 
             let _watcher = Watcher::start(context);
     
             std::thread::park();
+        },
+
+        Commands::Version => {
+            let mut stdout = stdout();
+            let _ = writeln!(
+                stdout,
+                "RSML CLI Version: v{}", crate_version!()
+            );
         }
     }
 }
