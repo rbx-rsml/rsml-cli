@@ -121,7 +121,7 @@ fn convert_children(parsed_rsml: &mut TreeNodeGroup, children: Vec<usize>) -> Ve
 
 fn derive_to_path_buf(derive: &str, parent_path: &Path) -> PathBuf {
     let derive = if !derive.ends_with(".rsml") { &format!("{}.rsml", derive) } else { derive };
-    parent_path.join(Path::new(derive).normalize())
+    parent_path.join(Path::new(derive)).normalize()
 }
 
 fn parse_macros_from_derives(
@@ -136,7 +136,7 @@ fn parse_macros_from_derives(
 
         let derives = parse_rsml_derives(&mut lex_rsml_derives(&derive_content));
         for derive in derives {
-            let derive_path = derive_to_path_buf(&derive, parent_path);
+            let derive_path = derive_to_path_buf(&derive, path);
 
             if already_parsed_derives.contains(&derive_path) { continue }
 
@@ -164,7 +164,7 @@ pub fn rsml_to_model_json(path: &Path, watcher: &mut WatcherContext) -> String {
 
     let derives_children = derives.iter()
         .map(|derive| {
-            let derive_path = derive_to_path_buf(&derive, parent_path);
+            let derive_path = derive_to_path_buf(&derive, path);
 
             parse_macros_from_derives(
                 derive_path.clone(), path, parent_path, &mut already_parsed_derives,
