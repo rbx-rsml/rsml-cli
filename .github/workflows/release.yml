@@ -59,6 +59,10 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        
+
       - name: Build Release
         run: cargo build --release --locked --verbose --target ${{ matrix.target }}
         env:
