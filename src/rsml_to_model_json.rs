@@ -1,13 +1,11 @@
 use std::{collections::{HashMap, HashSet}, fs, path::{Path, PathBuf}};
 
-use normalize_path::NormalizePath;
 use rbx_types::{Attributes, Variant};
 use rbx_rsml::{lex_rsml, lex_rsml_derives, lex_rsml_macros, parse_rsml, parse_rsml_derives, parse_rsml_macros, MacroGroup, TreeNodeGroup, BUILTIN_MACROS};
 use serde::{ser::SerializeStruct, Deserialize, Serialize, Serializer};
 use serde_json::{json, ser::PrettyFormatter, Serializer as JsonSerializer};
 
-use crate::WatcherContext;
-
+use crate::{NormalizePath, WatcherContext};
 
 #[derive(Deserialize)]
 pub struct StyleSheet {

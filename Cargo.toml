@@ -7,11 +7,10 @@ edition = "2024"
 rbx_types = "2.0.0"
 rbx-rsml = "0.1.11"
 guarded = "0.0.2"
-serde_json = "1.0.140"
+serde_json = "1.0.142"
 serde = "1.0.219"
 memofs = "0.3.0"
 crossbeam-channel = "0.5.14"
 jod-thread = "1.0.0"
-normalize-path = "0.2.1"
 multimap = "0.10.1"
-clap = { version = "4.5.39", features = ["derive", "cargo"] }
+clap = { version = "4.5.45", features = ["derive", "cargo"] }

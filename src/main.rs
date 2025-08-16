@@ -1,15 +1,32 @@
+mod normalize_path;
+pub use normalize_path::NormalizePath;
+
 mod rsml_to_model_json;
+use rsml_to_model_json::rsml_to_model_json;
+
 use guarded::guarded_unwrap;
 use multimap::MultiMap;
-use rsml_to_model_json::rsml_to_model_json;
 use clap::{Parser, Subcommand, crate_version};
+use serde::Deserialize;
 
 use std::{env::current_dir, ffi::OsStr, fs, io::{stdout, Write}, path::{Path, PathBuf}, sync::Arc};
 
 use crossbeam_channel::{select, RecvError, Sender};
 use jod_thread::JoinHandle;
 use memofs::{ReadDir, StdBackend, Vfs, VfsEvent};
-use normalize_path::NormalizePath;
+
+#[derive(Deserialize)]
+pub struct ModelJsonId {
+    id: String
+}
+
+fn model_json_is_rsml(path: &Path) -> bool {
+    let contents = guarded_unwrap!(fs::read_to_string(path), return false);
+    let model: ModelJsonId = guarded_unwrap!(serde_json::from_str(&contents), return false);
+
+    model.id.ends_with(".rsml")
+}
+
 
 pub struct WatcherContext {
     pub vfs: Arc<Vfs>,
@@ -27,20 +44,25 @@ impl WatcherContext {
         let path = match &event {
             VfsEvent::Create(path) | VfsEvent::Write(path) | VfsEvent::Remove(path) => {
                 path.normalize()
-
             },
+
             _ => return
         };
 
         let is_file = path.is_file();
+        
+        // We found a change for an .rsml file.
+        if is_file && path.starts_with(&self.input_dir) && path.extension() == Some(OsStr::new("rsml")) {
+            self.create_file(&path);
 
         // file no longer exists, remove it (the Remove event can't be relied upon).
-        if !is_file && !path.is_dir() && path.extension() == Some(OsStr::new("rsml")) {
-            self.remove_file(path);
-        
-        // applies utils from file.
-        } else if is_file && path.starts_with(&self.input_dir) && path.extension() == Some(OsStr::new("rsml")) {
-            self.create_file(&path);
+        } else if !is_file && !path.is_dir() && path.extension() == Some(OsStr::new("rsml")) {
+            let _ = fs::remove_file(&path);
+
+            let path_stem_str = path.file_stem()
+                .map(|x| x.to_str().unwrap_or_default())
+                .unwrap_or_else(|| "");
+            let _ = fs::remove_file(path.join(format!("../{}.model.json", path_stem_str)).normalize());
         }
     }
 
@@ -64,32 +86,31 @@ impl WatcherContext {
         }
     }
 
-    fn remove_file(&mut self, mut path: PathBuf) {
-        path.set_extension("model.json");
-
-        let _ = fs::remove_file(path);
-    }
-
-    fn create_initial(&mut self, dir: Result<ReadDir, std::io::Error>) {
+    fn initialize(&mut self, dir: Result<ReadDir, std::io::Error>) {
         let dir = match dir {
             Ok(dir) => dir,
             Err(_) => return
         };
     
         for entry in dir {
-            let entry = match entry {
-                Ok(entry) => entry,
+            let path = match &entry {
+                Ok(entry) => entry.path(),
                 Err(_) => continue
             };
-            let path = entry.path();
             
             // Applies files for all of the directories descendants.
             if path.is_dir() {
-                self.create_initial(self.vfs.read_dir(path));
+                self.initialize(self.vfs.read_dir(path));
                 
-            // Creates the output for the current file.
-            } else if path.is_file() && path.extension() == Some(OsStr::new("rsml")) {
-                self.create_file(&path.canonicalize().unwrap());
+            } else if path.is_file() {
+                // Creates the output for the current file.
+                if path.extension() == Some(OsStr::new("rsml")) {
+                    self.create_file(&path.canonicalize().unwrap());
+
+                // Deletes .model.json file if it represents rsml as its considered stale.
+                } else if path.to_string_lossy().ends_with(".model.json") && model_json_is_rsml(path) {
+                   let _ = fs::remove_file(path);
+                }
             }
         }
     }
@@ -169,6 +190,14 @@ enum Commands {
         output: Option<PathBuf>,
     },
 
+    Build {
+        #[arg(value_enum, required = true)]
+        input: PathBuf,
+
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+
     Version
 }
 
@@ -179,8 +208,8 @@ fn main() {
 
     match cli.command {
         Commands::Watch { input, output } => {
-            let input_dir = curr_dir.join(input);
-            let output_dir = output.unwrap_or(input_dir.clone());
+            let input_dir = &input;
+            let output_dir = output.as_ref().unwrap_or(input_dir);
             
             let _ = fs::create_dir_all(&input_dir);
             let _ = fs::create_dir_all(&output_dir);
@@ -191,14 +220,39 @@ fn main() {
             let initial_dir = context.vfs.read_dir(&context.input_dir);
             context.vfs.set_watch_enabled(false);
 
-            context.create_initial(initial_dir);
+            context.initialize(initial_dir);
 
             let mut stdout = stdout();
-            let _ = writeln!(stdout, "RSML CLI is now watching {:#?}.", input_dir.as_os_str());
+            let _ = writeln!(stdout, "RSML CLI is now watching {:#?}.", context.input_dir);
 
             let _watcher = Watcher::start(context);
     
             std::thread::park();
+        },
+
+        Commands::Build { input, output } => {
+            let input_dir = &input;
+            let output_dir = output.as_ref()
+                .unwrap_or(input_dir);
+            
+            let _ = fs::create_dir_all(&input_dir);
+            let _ = fs::create_dir_all(&output_dir);
+
+            let vfs = Vfs::new(StdBackend::new());
+            let mut context = WatcherContext::new(vfs, &input_dir, &output_dir);
+
+            let initial_dir = context.vfs.read_dir(&context.input_dir);
+            context.vfs.set_watch_enabled(false);
+
+            context.initialize(initial_dir);
+
+            let mut stdout = stdout();
+
+            if output.is_some() {
+                let _ = writeln!(stdout, "RSML CLI successfully built {:#?} to {:#?}.", context.input_dir, context.output_dir);
+            } else {
+                let _ = writeln!(stdout, "RSML CLI successfully built {:#?}.", context.input_dir);
+            }
         },
 
         Commands::Version => {
