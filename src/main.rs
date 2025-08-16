@@ -4,16 +4,19 @@ pub use normalize_path::NormalizePath;
 mod rsml_to_model_json;
 use rsml_to_model_json::rsml_to_model_json;
 
-use guarded::guarded_unwrap;
+mod guarded_unwrap;
+
 use multimap::MultiMap;
 use clap::{Parser, Subcommand, crate_version};
 use serde::Deserialize;
 
-use std::{env::current_dir, ffi::OsStr, fs, io::{stdout, Write}, path::{Path, PathBuf}, sync::Arc};
+use std::{ffi::OsStr, fs, io::{stdout, Write}, path::{Path, PathBuf}, sync::Arc};
 
 use crossbeam_channel::{select, RecvError, Sender};
 use jod_thread::JoinHandle;
 use memofs::{ReadDir, StdBackend, Vfs, VfsEvent};
+
+use crate::guarded_unwrap::GuardedUnwrap;
 
 #[derive(Deserialize)]
 pub struct ModelJsonId {
@@ -56,7 +59,7 @@ impl WatcherContext {
             self.create_file(&path);
 
         // file no longer exists, remove it (the Remove event can't be relied upon).
-        } else if !is_file && !path.is_dir() && path.extension() == Some(OsStr::new("rsml")) {
+        } else if !is_file && !path.is_dir() {
             let _ = fs::remove_file(&path);
 
             let path_stem_str = path.file_stem()
@@ -68,6 +71,7 @@ impl WatcherContext {
 
     fn create_file(&mut self, path: &Path) {
         let output_path = &{
+            println!("{:#?}", path);
             let mut output_path = self.output_dir.join(path.strip_prefix(&self.input_dir).unwrap());
             output_path.set_extension("model.json");
             output_path
@@ -86,31 +90,75 @@ impl WatcherContext {
         }
     }
 
-    fn initialize(&mut self, dir: Result<ReadDir, std::io::Error>) {
-        let dir = match dir {
-            Ok(dir) => dir,
-            Err(_) => return
-        };
+    fn initialize(&mut self) {
+        if self.input_dir == self.output_dir {
+            self.initialize_create_and_clean(self.vfs.read_dir(&self.input_dir));
+
+        } else {
+            self.initialize_clean(self.vfs.read_dir(&self.output_dir));
+            self.initialize_create(self.vfs.read_dir(&self.input_dir));
+        }
+    }
+
+    fn initialize_create_and_clean(&mut self, dir: Result<ReadDir, std::io::Error>) {
+        let dir = guarded_unwrap!(dir, return);
     
         for entry in dir {
-            let path = match &entry {
-                Ok(entry) => entry.path(),
-                Err(_) => continue
-            };
+            let path = guarded_unwrap!(&entry, continue).path();
             
             // Applies files for all of the directories descendants.
             if path.is_dir() {
-                self.initialize(self.vfs.read_dir(path));
+                self.initialize_create_and_clean(self.vfs.read_dir(path));
                 
             } else if path.is_file() {
-                // Creates the output for the current file.
+                // Creates the .model.json for the current .rsml file.
                 if path.extension() == Some(OsStr::new("rsml")) {
                     self.create_file(&path.canonicalize().unwrap());
 
                 // Deletes .model.json file if it represents rsml as its considered stale.
-                } else if path.to_string_lossy().ends_with(".model.json") && model_json_is_rsml(path) {
+                } else if 
+                    path.to_string_lossy().ends_with(".model.json") && 
+                    model_json_is_rsml(path)
+                {
                    let _ = fs::remove_file(path);
                 }
+            }
+        }
+    }
+
+    fn initialize_create(&mut self, dir: Result<ReadDir, std::io::Error>) {
+        let dir = guarded_unwrap!(dir, return);
+
+        for entry in dir {
+            let path = guarded_unwrap!(&entry, continue).path();
+            
+            // Applies files for all of the directories descendants.
+            if path.is_dir() {
+                self.initialize_create(self.vfs.read_dir(path));
+                
+            // Creates the .model.json for the current .rsml file.
+            } else if path.is_file() && path.extension() == Some(OsStr::new("rsml")) {
+                self.create_file(&path.canonicalize().unwrap());
+            }
+        }
+    }
+
+    fn initialize_clean(&mut self, dir: Result<ReadDir, std::io::Error>) {
+        let dir = guarded_unwrap!(dir, return);
+
+        for entry in dir {
+            let path = guarded_unwrap!(&entry, continue).path();
+            
+            // Applies files for all of the directories descendants.
+            if path.is_dir() {
+                self.initialize_clean(self.vfs.read_dir(path));
+                
+            // Creates the .model.json for the current .rsml file.
+            } else if path.is_file() &&
+                path.to_string_lossy().ends_with(".model.json") && 
+                model_json_is_rsml(path)
+            {
+                let _ = fs::remove_file(path);
             }
         }
     }
@@ -202,8 +250,6 @@ enum Commands {
 }
 
 fn main() {
-    let curr_dir = current_dir().unwrap();
-
     let cli = Cli::parse();
 
     match cli.command {
@@ -216,11 +262,7 @@ fn main() {
 
             let vfs = Vfs::new(StdBackend::new());
             let mut context = WatcherContext::new(vfs, &input_dir, &output_dir);
-
-            let initial_dir = context.vfs.read_dir(&context.input_dir);
-            context.vfs.set_watch_enabled(false);
-
-            context.initialize(initial_dir);
+            context.initialize();
 
             let mut stdout = stdout();
             let _ = writeln!(stdout, "RSML CLI is now watching {:#?}.", context.input_dir);
@@ -240,11 +282,7 @@ fn main() {
 
             let vfs = Vfs::new(StdBackend::new());
             let mut context = WatcherContext::new(vfs, &input_dir, &output_dir);
-
-            let initial_dir = context.vfs.read_dir(&context.input_dir);
-            context.vfs.set_watch_enabled(false);
-
-            context.initialize(initial_dir);
+            context.initialize();
 
             let mut stdout = stdout();
 
