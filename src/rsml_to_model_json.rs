@@ -5,7 +5,7 @@ use rbx_rsml::{lex_rsml, lex_rsml_derives, lex_rsml_macros, parse_rsml, parse_rs
 use serde::{ser::SerializeStruct, Deserialize, Serialize, Serializer};
 use serde_json::{json, ser::PrettyFormatter, Serializer as JsonSerializer};
 
-use crate::{NormalizePath, WatcherContext};
+use crate::{guarded_unwrap, luaurc::Luaurc, NormalizePath, WatcherContext};
 
 #[derive(Deserialize)]
 pub struct StyleSheet {
@@ -84,6 +84,55 @@ enum Child {
     StyleDerive(StyleDerive)
 }
 
+fn resolve_derive_alias(
+    derived_path: &str,
+    current_path: &Path,
+    luaurc: Option<&mut (PathBuf, Luaurc)>
+) -> PathBuf {
+    let path = PathBuf::from(derived_path);  
+    let (luaurc_path, luaurc) = guarded_unwrap!(luaurc, return path);
+
+    let mut components = path.components();
+
+    let component = guarded_unwrap!(components.next(), return path);
+    let component_str = component.as_os_str().to_string_lossy();
+
+    if component_str.starts_with("@") {
+        let alias_name = &component_str.as_ref()[1..];
+        
+        luaurc.dependants.insert(alias_name.to_string(), current_path.to_path_buf());
+
+        if let Some(alias) = luaurc.aliases.get(alias_name) {
+            let mut path = luaurc_path.join("../").join(alias).normalize();
+
+            path.push(components);
+
+            return path.normalize()
+        }
+    }
+
+    return current_path.join("../").join(path).normalize()
+}
+
+fn resolve_derive(
+    content: &str,
+    current_path: &Path,
+    luaurc: Option<&mut (PathBuf, Luaurc)>
+) -> Option<PathBuf> {
+    let content = content.trim();
+    let mut path = resolve_derive_alias(content, current_path, luaurc);
+    path.set_extension("rsml");
+
+    match path.canonicalize() {
+        Ok(canonicalized) => {
+            if &canonicalized == current_path { None }
+            else { Some(canonicalized) }
+        },
+
+        Err(_) => None
+    }
+}
+
 fn convert_children(parsed_rsml: &mut TreeNodeGroup, children: Vec<usize>) -> Vec<Child> {
     children
         .iter().map(|child_idx| {
@@ -117,14 +166,13 @@ fn convert_children(parsed_rsml: &mut TreeNodeGroup, children: Vec<usize>) -> Ve
         .collect::<Vec<Child>>()
 }
 
-fn derive_to_path_buf(derive: &str, parent_path: &Path) -> PathBuf {
-    let derive = if !derive.ends_with(".rsml") { &format!("{}.rsml", derive) } else { derive };
-    parent_path.join(Path::new(derive)).normalize()
-}
-
 fn parse_macros_from_derives(
-    derive_path: PathBuf, path: &Path, parent_path: &Path, already_parsed_derives: &mut HashSet<PathBuf>,
-    macro_group: &mut MacroGroup, watcher: &mut WatcherContext
+    derive_path: PathBuf,
+    path: &Path,
+    parent_path: &Path,
+    already_parsed_derives: &mut HashSet<PathBuf>,
+    macro_group: &mut MacroGroup,
+    watcher: &mut WatcherContext
 ) {
     // If the file is valid then we add its macros to the macro group,
     // then we attempt to add all of the macros from the files dependencies
@@ -134,7 +182,10 @@ fn parse_macros_from_derives(
 
         let derives = parse_rsml_derives(&mut lex_rsml_derives(&derive_content));
         for derive in derives {
-            let derive_path = derive_to_path_buf(&derive, path);
+            let derive_path = guarded_unwrap!(
+                resolve_derive(&derive, path, watcher.luaurc.as_mut()),
+                continue
+            );
 
             if already_parsed_derives.contains(&derive_path) { continue }
 
@@ -147,7 +198,7 @@ fn parse_macros_from_derives(
         }
     };
 
-    watcher.dependencies.insert(derive_path, path.to_path_buf());
+    watcher.dependencies.insert(path.to_path_buf(), derive_path);
 }
 
 pub fn rsml_to_model_json(path: &Path, watcher: &mut WatcherContext) -> String {
@@ -161,18 +212,21 @@ pub fn rsml_to_model_json(path: &Path, watcher: &mut WatcherContext) -> String {
     let mut already_parsed_derives: HashSet<PathBuf> = HashSet::new();
 
     let derives_children = derives.iter()
-        .map(|derive| {
-            let derive_path = derive_to_path_buf(&derive, path);
+        .filter_map(|derive| {
+            let derive_path = guarded_unwrap!(
+                resolve_derive(&derive, path, watcher.luaurc.as_mut()),
+                return None
+            );
 
             parse_macros_from_derives(
                 derive_path.clone(), path, parent_path, &mut already_parsed_derives,
                 &mut macro_group, watcher
             );
 
-            Child::StyleDerive(StyleDerive {
+            Some(Child::StyleDerive(StyleDerive {
                 name: derive_path.file_stem().unwrap().to_str().unwrap().to_string(),
                 stylesheet: derive_path.strip_prefix(&watcher.input_dir).unwrap().to_str().unwrap().to_string()
-            })
+            }))
         })
         .collect::<Vec<Child>>();
 

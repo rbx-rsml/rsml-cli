@@ -1,6 +1,15 @@
+# v0.0.9
+## Changes
+- Adds support for Luaurc aliases in derives. It attempts to find a Luaurc file either at the input directory or the parent of the input directory. You can also manually specify a Luaurc file via the `luaurc` flag.
+- Throws an error if the input doesn't exist or isn't a directory.
+
+## Fixes
+- Fixed issue where renaming a directory did not update the corresponding `.model.json` files.
+- Fixed issue where deleted `rsml` files weren't removed from the internal dependencies map.
+
 # v0.0.8
 ## Fixes
-- Fixed issue where the input directory was cleaned (the removal of redundant rsml .model.json files) on initialisation instead of the output directory.
+- Fixed issue where the input directory was cleaned (the removal of redundant .model.json files) on initialisation instead of the output directory.
 
 # v0.0.7
 ## Fixes

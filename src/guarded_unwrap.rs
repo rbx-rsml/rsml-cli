@@ -1,7 +1,7 @@
 #[macro_export]
 macro_rules! guarded_unwrap {
     (@inner $expr:expr, $none_case:expr) => {
-        match GuardedUnwrap::guarded_unwrap_inner($expr) {
+        match crate::GuardedUnwrap::guarded_unwrap_inner($expr) {
             Some(value) => value,
             None => $none_case,
         }
