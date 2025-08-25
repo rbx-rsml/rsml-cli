@@ -35,11 +35,6 @@ jobs:
 
           - host: macos
             os: macos-latest
-            target: x86_64-apple-darwin
-            label: macos-x86_64
-
-          - host: macos
-            os: macos-latest
             target: aarch64-apple-darwin
             label: macos-aarch64
 
