@@ -105,12 +105,6 @@ impl WatcherContext {
                 self.prune_dependencies(&path);
             }
         }
-
-        if let Some((_, luaurc)) = &self.luaurc {
-            println!("\n\n=============================================================\n\ndependencies: {:#?}\n\nluaurc dependants: {:#?}\n\n", &self.dependencies, &luaurc.dependants)
-        } else {
-            println!("\n\n=============================================================\n\ndependencies: {:#?}\n\n", &self.dependencies)
-        }
     }
 
     fn create_file(&mut self, path: &Path, create_dependencies: CreateFileDependencies) {
