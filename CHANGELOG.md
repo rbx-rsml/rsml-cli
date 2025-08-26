@@ -1,3 +1,11 @@
+# v0.0.11
+## Fixes
+Derives are now resolved properly when there is no luaurc file.
+
+# v0.0.10
+## Fixes
+Removed redundant print statement.
+
 # v0.0.9
 ## Changes
 - Adds support for Luaurc aliases in derives. It attempts to find a Luaurc file either at the input directory or the parent of the input directory. You can also manually specify a Luaurc file via the `luaurc` flag.

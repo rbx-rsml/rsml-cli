@@ -89,29 +89,27 @@ fn resolve_derive_alias(
     current_path: &Path,
     luaurc: Option<&mut (PathBuf, Luaurc)>
 ) -> PathBuf {
-    let path = PathBuf::from(derived_path);  
-    let (luaurc_path, luaurc) = guarded_unwrap!(luaurc, return path);
+    let path = 'core: {
+        let path = PathBuf::from(derived_path).normalize();
+        let (_, luaurc) = guarded_unwrap!(luaurc, break 'core path);
 
-    let mut components = path.components();
+        let mut components = path.components();
 
-    let component = guarded_unwrap!(components.next(), return path);
-    let component_str = component.as_os_str().to_string_lossy();
+        let component = guarded_unwrap!(components.next(), break 'core path);
+        let component_str = component.as_os_str().to_string_lossy();
 
-    if component_str.starts_with("@") {
-        let alias_name = &component_str.as_ref()[1..];
-        
-        luaurc.dependants.insert(alias_name.to_string(), current_path.to_path_buf());
-
-        if let Some(alias) = luaurc.aliases.get(alias_name) {
-            let mut path = luaurc_path.join("../").join(alias).normalize();
+        if component_str.starts_with("@") &&
+            let Some(alias) = luaurc.aliases.get(&component_str.as_ref()[1..])
+        {
+            let mut path = PathBuf::from(alias);
 
             path.push(components);
 
-            return path.normalize()
-        }
-    }
+            return path
+        } else { path }
+    };
 
-    return current_path.join("../").join(path).normalize()
+    current_path.join("../").join(path)
 }
 
 fn resolve_derive(
