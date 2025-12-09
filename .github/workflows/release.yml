@@ -60,9 +60,9 @@ jobs:
             ~/.cargo/git
             target
           key: ${{ matrix.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-        
+
       - name: Build Release
-        run: cargo build --release --locked --verbose --target ${{ matrix.target }}
+        run: cargo build --release --verbose --target ${{ matrix.target }}
 
       - name: Save Rust Cache
         uses: actions/cache/save@v4
