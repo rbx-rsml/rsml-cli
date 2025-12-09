@@ -1,3 +1,7 @@
+# v0.0.12
+## Fixes
+Fixed issue where file system events from the build step polluted the watcher leading to .model.json files being immediately deleted after being created in certain scenarios.
+
 # v0.0.11
 ## Fixes
 Derives are now resolved properly when there is no luaurc file.
