@@ -1,3 +1,8 @@
+# v0.0.13
+## Fixes
+- Properties order when serialized is now deterministic.
+- Updated to rsml 0.1.12.
+
 # v0.0.12
 ## Fixes
 Fixed issue where file system events from the build step polluted the watcher leading to .model.json files being immediately deleted after being created in certain scenarios.

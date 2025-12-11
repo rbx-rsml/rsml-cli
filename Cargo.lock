@@ -840,7 +840,7 @@ dependencies = [
 
 [[package]]
 name = "rsml-cli"
-version = "0.0.12"
+version = "0.0.13"
 dependencies = [
  "clap",
  "crossbeam-channel",
