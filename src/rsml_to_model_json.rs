@@ -1,11 +1,18 @@
-use std::{collections::{HashMap, HashSet}, fs, path::{Path, PathBuf}};
+use std::{
+    collections::{BTreeMap, HashSet},
+    fs,
+    path::{Path, PathBuf},
+};
 
+use rbx_rsml::{
+    BUILTIN_MACROS, MacroGroup, TreeNodeGroup, lex_rsml, lex_rsml_derives, lex_rsml_macros,
+    parse_rsml, parse_rsml_derives, parse_rsml_macros,
+};
 use rbx_types::{Attributes, Variant};
-use rbx_rsml::{lex_rsml, lex_rsml_derives, lex_rsml_macros, parse_rsml, parse_rsml_derives, parse_rsml_macros, MacroGroup, TreeNodeGroup, BUILTIN_MACROS};
-use serde::{ser::SerializeStruct, Deserialize, Serialize, Serializer};
-use serde_json::{json, ser::PrettyFormatter, Serializer as JsonSerializer};
+use serde::{Deserialize, Serialize, Serializer, ser::SerializeStruct};
+use serde_json::{Serializer as JsonSerializer, json, ser::PrettyFormatter};
 
-use crate::{guarded_unwrap, luaurc::Luaurc, NormalizePath, WatcherContext};
+use crate::{NormalizePath, WatcherContext, guarded_unwrap, luaurc::Luaurc};
 
 #[derive(Deserialize)]
 pub struct StyleSheet {
@@ -16,7 +23,8 @@ pub struct StyleSheet {
 
 impl Serialize for StyleSheet {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where S: Serializer
+    where
+        S: Serializer,
     {
         let mut x = serializer.serialize_struct("StyleSheet", 4)?;
         x.serialize_field("className", "StyleSheet")?;
@@ -31,19 +39,19 @@ impl Serialize for StyleSheet {
 struct StyleRule {
     name: Option<String>,
     attributes: Attributes,
-    properties: HashMap<String, Variant>,
-    children: Vec<Child>
+    properties: BTreeMap<String, Variant>,
+    children: Vec<Child>,
 }
 
 impl Serialize for StyleRule {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where S: Serializer
+    where
+        S: Serializer,
     {
         let mut x = if let Some(name) = &self.name {
             let mut x = serializer.serialize_struct("StyleRule", 5)?;
             x.serialize_field("name", &name)?;
             x
-
         } else {
             serializer.serialize_struct("StyleRule", 4)?
         };
@@ -52,7 +60,7 @@ impl Serialize for StyleRule {
         x.serialize_field("attributes", &self.attributes)?;
         x.serialize_field("properties", &self.properties)?;
         x.serialize_field("children", &self.children)?;
-        
+
         x.end()
     }
 }
@@ -60,19 +68,23 @@ impl Serialize for StyleRule {
 #[derive(Deserialize)]
 struct StyleDerive {
     name: String,
-    stylesheet: String
+    stylesheet: String,
 }
 
 impl Serialize for StyleDerive {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where S: Serializer
+    where
+        S: Serializer,
     {
         let mut x = serializer.serialize_struct("StyleDerive", 4)?;
         x.serialize_field("className", "StyleDerive")?;
         x.serialize_field("name", &self.name)?;
-        x.serialize_field("attributes", &json!({
-            "Rojo_Target_StyleSheet": &self.stylesheet
-        }))?;
+        x.serialize_field(
+            "attributes",
+            &json!({
+                "Rojo_Target_StyleSheet": &self.stylesheet
+            }),
+        )?;
         x.end()
     }
 }
@@ -81,13 +93,13 @@ impl Serialize for StyleDerive {
 #[serde(untagged)]
 enum Child {
     StyleRule(StyleRule),
-    StyleDerive(StyleDerive)
+    StyleDerive(StyleDerive),
 }
 
 fn resolve_derive_alias(
     derived_path: &str,
     current_path: &Path,
-    luaurc: Option<&mut (PathBuf, Luaurc)>
+    luaurc: Option<&mut (PathBuf, Luaurc)>,
 ) -> PathBuf {
     let path = 'core: {
         let path = PathBuf::from(derived_path).normalize();
@@ -98,15 +110,17 @@ fn resolve_derive_alias(
         let component = guarded_unwrap!(components.next(), break 'core path);
         let component_str = component.as_os_str().to_string_lossy();
 
-        if component_str.starts_with("@") &&
-            let Some(alias) = luaurc.aliases.get(&component_str.as_ref()[1..])
+        if component_str.starts_with("@")
+            && let Some(alias) = luaurc.aliases.get(&component_str.as_ref()[1..])
         {
             let mut path = PathBuf::from(alias);
 
             path.push(components);
 
-            return path
-        } else { path }
+            return path;
+        } else {
+            path
+        }
     };
 
     current_path.join("../").join(path)
@@ -115,7 +129,7 @@ fn resolve_derive_alias(
 fn resolve_derive(
     content: &str,
     current_path: &Path,
-    luaurc: Option<&mut (PathBuf, Luaurc)>
+    luaurc: Option<&mut (PathBuf, Luaurc)>,
 ) -> Option<PathBuf> {
     let content = content.trim();
     let mut path = resolve_derive_alias(content, current_path, luaurc);
@@ -123,17 +137,21 @@ fn resolve_derive(
 
     match path.canonicalize() {
         Ok(canonicalized) => {
-            if &canonicalized == current_path { None }
-            else { Some(canonicalized) }
-        },
+            if &canonicalized == current_path {
+                None
+            } else {
+                Some(canonicalized)
+            }
+        }
 
-        Err(_) => None
+        Err(_) => None,
     }
 }
 
 fn convert_children(parsed_rsml: &mut TreeNodeGroup, children: Vec<usize>) -> Vec<Child> {
     children
-        .iter().map(|child_idx| {
+        .iter()
+        .map(|child_idx| {
             let child: rbx_rsml::TreeNode = parsed_rsml.take_node(*child_idx).unwrap();
             let selector = child.selector;
 
@@ -143,7 +161,7 @@ fn convert_children(parsed_rsml: &mut TreeNodeGroup, children: Vec<usize>) -> Ve
                 attributes: child.attributes,
 
                 properties: {
-                    let mut properties = HashMap::new();
+                    let mut properties = BTreeMap::new();
 
                     if let Some(selector) = selector {
                         properties.insert("Selector".to_string(), Variant::String(selector));
@@ -153,12 +171,15 @@ fn convert_children(parsed_rsml: &mut TreeNodeGroup, children: Vec<usize>) -> Ve
                         properties.insert("Priority".to_string(), Variant::Int32(priority));
                     };
 
-                    properties.insert("PropertiesSerialize".to_string(), Variant::Attributes(child.properties));
+                    properties.insert(
+                        "PropertiesSerialize".to_string(),
+                        Variant::Attributes(child.properties),
+                    );
 
                     properties
                 },
 
-                children: convert_children(parsed_rsml, child.child_rules)
+                children: convert_children(parsed_rsml, child.child_rules),
             })
         })
         .collect::<Vec<Child>>()
@@ -170,7 +191,7 @@ fn parse_macros_from_derives(
     parent_path: &Path,
     already_parsed_derives: &mut HashSet<PathBuf>,
     macro_group: &mut MacroGroup,
-    watcher: &mut WatcherContext
+    watcher: &mut WatcherContext,
 ) {
     // If the file is valid then we add its macros to the macro group,
     // then we attempt to add all of the macros from the files dependencies
@@ -185,11 +206,17 @@ fn parse_macros_from_derives(
                 continue
             );
 
-            if already_parsed_derives.contains(&derive_path) { continue }
+            if already_parsed_derives.contains(&derive_path) {
+                continue;
+            }
 
             parse_macros_from_derives(
-                derive_path.clone(), path, parent_path, already_parsed_derives,
-                macro_group, watcher
+                derive_path.clone(),
+                path,
+                parent_path,
+                already_parsed_derives,
+                macro_group,
+                watcher,
             );
 
             already_parsed_derives.insert(derive_path);
@@ -209,7 +236,8 @@ pub fn rsml_to_model_json(path: &Path, watcher: &mut WatcherContext) -> String {
 
     let mut already_parsed_derives: HashSet<PathBuf> = HashSet::new();
 
-    let derives_children = derives.iter()
+    let derives_children = derives
+        .iter()
         .filter_map(|derive| {
             let derive_path = guarded_unwrap!(
                 resolve_derive(&derive, path, watcher.luaurc.as_mut()),
@@ -217,13 +245,27 @@ pub fn rsml_to_model_json(path: &Path, watcher: &mut WatcherContext) -> String {
             );
 
             parse_macros_from_derives(
-                derive_path.clone(), path, parent_path, &mut already_parsed_derives,
-                &mut macro_group, watcher
+                derive_path.clone(),
+                path,
+                parent_path,
+                &mut already_parsed_derives,
+                &mut macro_group,
+                watcher,
             );
 
             Some(Child::StyleDerive(StyleDerive {
-                name: derive_path.file_stem().unwrap().to_str().unwrap().to_string(),
-                stylesheet: derive_path.strip_prefix(&watcher.input_dir).unwrap().to_str().unwrap().to_string()
+                name: derive_path
+                    .file_stem()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                stylesheet: derive_path
+                    .strip_prefix(&watcher.input_dir)
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
             }))
         })
         .collect::<Vec<Child>>();
@@ -233,11 +275,17 @@ pub fn rsml_to_model_json(path: &Path, watcher: &mut WatcherContext) -> String {
 
     let rsml_root = parsed_rsml.take_root().unwrap();
 
-    let mut children = convert_children(&mut parsed_rsml, rsml_root.child_rules); 
+    let mut children = convert_children(&mut parsed_rsml, rsml_root.child_rules);
     children.extend(derives_children);
 
     let style_sheet = StyleSheet {
-        id: path.normalize().strip_prefix(&watcher.input_dir).unwrap().to_str().unwrap().to_string(),
+        id: path
+            .normalize()
+            .strip_prefix(&watcher.input_dir)
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string(),
         attributes: rsml_root.attributes,
         children: children,
     };
