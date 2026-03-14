@@ -1,3 +1,7 @@
+# v0.0.14
+## Fixes
+- Fixed crash on windows due to normalization and canonicalization differing in output.
+
 # v0.0.13
 ## Fixes
 - Properties order when serialized is now deterministic.

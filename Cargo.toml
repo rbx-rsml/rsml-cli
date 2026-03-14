@@ -1,6 +1,6 @@
 [package]
 name = "rsml-cli"
-version = "0.0.13"
+version = "0.0.14"
 edition = "2024"
 
 [dependencies]
@@ -12,3 +12,4 @@ memofs = "0.3.0"
 crossbeam-channel = "0.5.14"
 jod-thread = "1.0.0"
 clap = { version = "4.5.45", features = ["derive", "cargo"] }
+dunce = "1.0.5"

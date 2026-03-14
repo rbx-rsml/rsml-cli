@@ -263,7 +263,7 @@ impl WatcherContext {
             } else if path.is_file() {
                 // Creates the .model.json for the current .rsml file.
                 if path.extension() == Some(OsStr::new("rsml")) {
-                    self.create_file(&path.canonicalize().unwrap(), CreateFileDependencies::False);
+                    self.create_file(&dunce::canonicalize(&path).unwrap(), CreateFileDependencies::False);
 
                 // Deletes .model.json file if it represents rsml as its considered stale.
                 } else if path.to_string_lossy().ends_with(".model.json")
@@ -287,7 +287,7 @@ impl WatcherContext {
 
             // Creates the .model.json for the current .rsml file.
             } else if path.is_file() && path.extension() == Some(OsStr::new("rsml")) {
-                self.create_file(&path.canonicalize().unwrap(), CreateFileDependencies::False);
+                self.create_file(&dunce::canonicalize(&path).unwrap(), CreateFileDependencies::False);
             }
         }
     }
@@ -313,8 +313,8 @@ impl WatcherContext {
     }
 
     fn new(vfs: Vfs, input_dir: &Path, output_dir: &Path, luaurc_path: Option<&PathBuf>) -> Self {
-        let input_dir = input_dir.canonicalize().unwrap();
-        let output_dir = output_dir.canonicalize().unwrap();
+        let input_dir = dunce::canonicalize(input_dir).unwrap();
+        let output_dir = dunce::canonicalize(output_dir).unwrap();
 
         Self {
             vfs: Arc::new(vfs),
@@ -546,7 +546,7 @@ fn startup_message(
 }
 
 fn canonicalize_input(path: &PathBuf) -> Result<PathBuf, String> {
-    match path.canonicalize() {
+    match dunce::canonicalize(path) {
         Ok(path) => match path.is_dir() {
             true => Ok(path),
             false => Err(format!(
