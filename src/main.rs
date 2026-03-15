@@ -605,6 +605,45 @@ fn build(
     Some(context)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn build_creates_model_json() {
+        let temp = std::env::temp_dir().join("rsml_test_build");
+        let input = temp.join("src");
+        let output = temp.join("out");
+
+        // Clean up from any previous run.
+        let _ = fs::remove_dir_all(&temp);
+        fs::create_dir_all(&input).unwrap();
+        fs::create_dir_all(&output).unwrap();
+
+        // Write an empty .rsml file (produces a valid model.json).
+        fs::write(input.join("test.rsml"), "").unwrap();
+
+        let vfs = Vfs::new(StdBackend::new());
+        let mut context = WatcherContext::new(vfs, &input, &output, None);
+        context.initialize();
+
+        let model_json_path = output.join("test.model.json");
+        assert!(
+            model_json_path.exists(),
+            "Expected {:?} to exist",
+            model_json_path
+        );
+
+        let content: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&model_json_path).unwrap()).unwrap();
+        assert_eq!(content["className"], "StyleSheet");
+
+        // Clean up.
+        let _ = fs::remove_dir_all(&temp);
+    }
+}
+
 fn main() {
     let cli = Cli::parse();
 
