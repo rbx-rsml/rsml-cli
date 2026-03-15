@@ -13,3 +13,6 @@ crossbeam-channel = "0.5.14"
 jod-thread = "1.0.0"
 clap = { version = "4.5.45", features = ["derive", "cargo"] }
 dunce = "1.0.5"
+
+[dev-dependencies]
+assert_cmd = "2"

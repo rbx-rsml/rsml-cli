@@ -605,6 +605,40 @@ fn build(
     Some(context)
 }
 
+fn main() {
+    let cli = Cli::parse();
+
+    match cli.command {
+        Commands::Watch {
+            input,
+            output,
+            luaurc_path,
+        } => {
+            let context = guarded_unwrap!(
+                build(input, output, luaurc_path, "RSML CLI is now watching"),
+                return
+            );
+
+            let _watcher = Watcher::start(context);
+
+            std::thread::park();
+        }
+
+        Commands::Build {
+            input,
+            output,
+            luaurc_path,
+        } => {
+            build(input, output, luaurc_path, "RSML CLI successfully built");
+        }
+
+        Commands::Version => {
+            let mut stdout = stdout();
+            let _ = writeln!(stdout, "RSML CLI Version: v{}", crate_version!());
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -642,38 +676,40 @@ mod tests {
         // Clean up.
         let _ = fs::remove_dir_all(&temp);
     }
-}
 
-fn main() {
-    let cli = Cli::parse();
+    #[test]
+    fn cli_build_command() {
+        use assert_cmd::Command;
 
-    match cli.command {
-        Commands::Watch {
-            input,
-            output,
-            luaurc_path,
-        } => {
-            let context = guarded_unwrap!(
-                build(input, output, luaurc_path, "RSML CLI is now watching"),
-                return
-            );
+        let temp = std::env::temp_dir().join("rsml_test_cli_build");
+        let input = temp.join("src");
+        let output = temp.join("out");
 
-            let _watcher = Watcher::start(context);
+        // Clean up from any previous run.
+        let _ = fs::remove_dir_all(&temp);
+        fs::create_dir_all(&input).unwrap();
+        fs::create_dir_all(&output).unwrap();
 
-            std::thread::park();
-        }
+        fs::write(input.join("test.rsml"), "").unwrap();
 
-        Commands::Build {
-            input,
-            output,
-            luaurc_path,
-        } => {
-            build(input, output, luaurc_path, "RSML CLI successfully built");
-        }
+        Command::cargo_bin("rsml-cli")
+            .unwrap()
+            .args(["build", input.to_str().unwrap(), "--output", output.to_str().unwrap()])
+            .assert()
+            .success();
 
-        Commands::Version => {
-            let mut stdout = stdout();
-            let _ = writeln!(stdout, "RSML CLI Version: v{}", crate_version!());
-        }
+        let model_json_path = output.join("test.model.json");
+        assert!(
+            model_json_path.exists(),
+            "Expected {:?} to exist",
+            model_json_path
+        );
+
+        let content: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&model_json_path).unwrap()).unwrap();
+        assert_eq!(content["className"], "StyleSheet");
+
+        // Clean up.
+        let _ = fs::remove_dir_all(&temp);
     }
 }
