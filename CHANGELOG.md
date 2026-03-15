@@ -1,3 +1,7 @@
+# v0.0.15
+## Features
+- Added a custom crash message which contains useful information.
+
 # v0.0.14
 ## Fixes
 - Fixed crash on windows due to normalization and canonicalization differing in output.

@@ -606,6 +606,25 @@ fn build(
 }
 
 fn main() {
+    std::panic::set_hook(Box::new(|info| {
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "unknown".into());
+
+        let payload = if let Some(s) = info.payload().downcast_ref::<&str>() {
+            s.to_string()
+        } else if let Some(s) = info.payload().downcast_ref::<String>() {
+            s.clone()
+        } else {
+            "unknown error".into()
+        };
+
+        eprintln!("RSML CLI crashed at {location}");
+        eprintln!("Error: {payload}");
+        eprintln!("Please report this at https://github.com/rbx-rsml/rsml-cli/issues");
+    }));
+
     let cli = Cli::parse();
 
     match cli.command {
