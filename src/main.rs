@@ -65,7 +65,7 @@ impl WatcherContext {
 
         let path = match &event {
             VfsEvent::Create(path) | VfsEvent::Write(path) | VfsEvent::Remove(path) => {
-                path.normalize()
+                dunce::canonicalize(path).unwrap_or_else(|_| path.normalize())
             }
 
             _ => return,

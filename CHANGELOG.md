@@ -1,3 +1,7 @@
+# v0.0.16
+## Fixes
+- Fixed crash on Windows where VFS event paths weren't canonicalized, causing a `StripPrefixError` during watch mode.
+
 # v0.0.15
 ## Features
 - Added a custom crash message which contains useful information.
