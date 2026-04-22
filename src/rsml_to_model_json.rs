@@ -5,8 +5,7 @@ use std::{
 };
 
 use rbx_rsml::{
-    BUILTIN_MACROS, MacroGroup, TreeNodeGroup, lex_rsml, lex_rsml_derives, lex_rsml_macros,
-    parse_rsml, parse_rsml_derives, parse_rsml_macros,
+    RsmlCompiler, RsmlParser, compiler::tree_node::CompiledRsml, lexer::Token, parser::Construct,
 };
 use rbx_types::{Attributes, Variant};
 use serde::{Deserialize, Serialize, Serializer, ser::SerializeStruct};
@@ -76,7 +75,7 @@ impl Serialize for StyleDerive {
     where
         S: Serializer,
     {
-        let mut x = serializer.serialize_struct("StyleDerive", 4)?;
+        let mut x = serializer.serialize_struct("StyleDerive", 3)?;
         x.serialize_field("className", "StyleDerive")?;
         x.serialize_field("name", &self.name)?;
         x.serialize_field(
@@ -94,6 +93,29 @@ impl Serialize for StyleDerive {
 enum Child {
     StyleRule(StyleRule),
     StyleDerive(StyleDerive),
+}
+
+fn extract_derive_paths(source: &str) -> Vec<String> {
+    let parsed = RsmlParser::from_source(source);
+    parsed
+        .ast
+        .iter()
+        .filter_map(|c| {
+            if let Construct::Derive {
+                body: Some(body), ..
+            } = c
+            {
+                if let Construct::Node { node } = body.as_ref() {
+                    return match node.token.value() {
+                        Token::StringSingle(s) => Some(s.to_string()),
+                        Token::StringMulti(ms) => Some(ms.content.to_string()),
+                        _ => None,
+                    };
+                }
+            }
+            None
+        })
+        .collect()
 }
 
 fn resolve_derive_alias(
@@ -148,15 +170,15 @@ fn resolve_derive(
     }
 }
 
-fn convert_children(parsed_rsml: &mut TreeNodeGroup, children: Vec<usize>) -> Vec<Child> {
+fn convert_children(compiled: &mut CompiledRsml, children: Vec<usize>) -> Vec<Child> {
     children
         .iter()
         .map(|child_idx| {
-            let child: rbx_rsml::TreeNode = parsed_rsml.take_node(*child_idx).unwrap();
+            let child = compiled.take_node(*child_idx).unwrap();
             let selector = child.selector;
 
             Child::StyleRule(StyleRule {
-                name: child.name.or(selector.clone()),
+                name: selector.clone(),
 
                 attributes: child.attributes,
 
@@ -179,64 +201,47 @@ fn convert_children(parsed_rsml: &mut TreeNodeGroup, children: Vec<usize>) -> Ve
                     properties
                 },
 
-                children: convert_children(parsed_rsml, child.child_rules),
+                children: convert_children(compiled, child.child_rules),
             })
         })
         .collect::<Vec<Child>>()
 }
 
-fn parse_macros_from_derives(
+fn track_derive_dependencies(
     derive_path: PathBuf,
     path: &Path,
-    parent_path: &Path,
-    already_parsed_derives: &mut HashSet<PathBuf>,
-    macro_group: &mut MacroGroup,
+    already_tracked: &mut HashSet<PathBuf>,
     watcher: &mut WatcherContext,
 ) {
-    // If the file is valid then we add its macros to the macro group,
-    // then we attempt to add all of the macros from the files dependencies
-    // to the macro group.
     if let Ok(derive_content) = fs::read_to_string(&derive_path) {
-        parse_rsml_macros(macro_group, &mut lex_rsml_macros(&derive_content));
-
-        let derives = parse_rsml_derives(&mut lex_rsml_derives(&derive_content));
+        let derives = extract_derive_paths(&derive_content);
         for derive in derives {
             let derive_path = guarded_unwrap!(
                 resolve_derive(&derive, path, watcher.luaurc.as_mut()),
                 continue
             );
 
-            if already_parsed_derives.contains(&derive_path) {
+            if already_tracked.contains(&derive_path) {
                 continue;
             }
 
-            parse_macros_from_derives(
-                derive_path.clone(),
-                path,
-                parent_path,
-                already_parsed_derives,
-                macro_group,
-                watcher,
-            );
+            track_derive_dependencies(derive_path.clone(), path, already_tracked, watcher);
 
-            already_parsed_derives.insert(derive_path);
+            already_tracked.insert(derive_path);
         }
-    };
+    }
 
     watcher.dependencies.insert(path.to_path_buf(), derive_path);
 }
 
 pub fn rsml_to_model_json(path: &Path, watcher: &mut WatcherContext) -> String {
-    let parent_path = path.parent().unwrap();
     let content = fs::read_to_string(path).unwrap();
 
-    let mut macro_group = BUILTIN_MACROS.clone();
+    let derive_strings = extract_derive_paths(&content);
 
-    let derives = parse_rsml_derives(&mut lex_rsml_derives(&content));
+    let mut already_tracked: HashSet<PathBuf> = HashSet::new();
 
-    let mut already_parsed_derives: HashSet<PathBuf> = HashSet::new();
-
-    let derives_children = derives
+    let derives_children = derive_strings
         .iter()
         .filter_map(|derive| {
             let derive_path = guarded_unwrap!(
@@ -244,14 +249,7 @@ pub fn rsml_to_model_json(path: &Path, watcher: &mut WatcherContext) -> String {
                 return None
             );
 
-            parse_macros_from_derives(
-                derive_path.clone(),
-                path,
-                parent_path,
-                &mut already_parsed_derives,
-                &mut macro_group,
-                watcher,
-            );
+            track_derive_dependencies(derive_path.clone(), path, &mut already_tracked, watcher);
 
             Some(Child::StyleDerive(StyleDerive {
                 name: derive_path
@@ -270,12 +268,11 @@ pub fn rsml_to_model_json(path: &Path, watcher: &mut WatcherContext) -> String {
         })
         .collect::<Vec<Child>>();
 
-    parse_rsml_macros(&mut macro_group, &mut lex_rsml_macros(&content));
-    let mut parsed_rsml = parse_rsml(&mut lex_rsml(&content), &macro_group);
+    let mut compiled = RsmlCompiler::from_source(&content);
 
-    let rsml_root = parsed_rsml.take_root().unwrap();
+    let rsml_root = compiled.take_root().unwrap();
 
-    let mut children = convert_children(&mut parsed_rsml, rsml_root.child_rules);
+    let mut children = convert_children(&mut compiled, rsml_root.child_rules);
     children.extend(derives_children);
 
     let style_sheet = StyleSheet {
@@ -287,14 +284,12 @@ pub fn rsml_to_model_json(path: &Path, watcher: &mut WatcherContext) -> String {
             .unwrap()
             .to_string(),
         attributes: rsml_root.attributes,
-        children: children,
+        children,
     };
 
     let formatter = PrettyFormatter::with_indent(b"    ");
     let mut buffer = Vec::new();
     let mut serializer = JsonSerializer::with_formatter(&mut buffer, formatter);
     style_sheet.serialize(&mut serializer).unwrap();
-    let json_string = String::from_utf8(buffer).unwrap();
-
-    json_string
+    String::from_utf8(buffer).unwrap()
 }

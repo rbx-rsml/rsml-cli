@@ -71,7 +71,7 @@ jobs:
 
           printf '%s\n' "$CHANGELOG" > /tmp/release_body.md
 
-          gh release create "$TAG" --draft --verify-tag --title "$TAG" --notes-file /tmp/release_body.md
+          gh release create "$TAG" --draft --verify-tag --title "CLI - $TAG" --notes-file /tmp/release_body.md
 
   build:
     needs: ["create-release"]

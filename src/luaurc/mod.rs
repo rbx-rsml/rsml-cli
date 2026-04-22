@@ -1,5 +1,9 @@
 use serde::de::Deserialize;
-use std::{collections::BTreeMap, ops::{Deref, DerefMut}, path::PathBuf};
+use std::{
+    collections::BTreeMap,
+    ops::{Deref, DerefMut},
+    path::PathBuf,
+};
 
 use rbx_rsml::types::LanguageMode;
 
@@ -27,59 +31,52 @@ impl Aliases {
         Luaurc::new(contents).aliases
     }
 
-    pub fn diff<'a>(
-        &'a self,
-        b: &'a Aliases
-    ) -> impl Iterator<Item = &'a String>
-    {
+    pub fn diff<'a>(&'a self, b: &'a Aliases) -> impl Iterator<Item = &'a String> {
         let mut ia = self.iter();
         let mut ib = b.iter();
 
         let mut na = ia.next();
         let mut nb = ib.next();
 
-        std::iter::from_fn(move || loop {
-            match (na, nb) {
-                (Some((ka, va)), Some((kb, vb))) => {
-                    if ka == kb {
-                        // same key
-                        let out = if va == vb {
-                            None
+        std::iter::from_fn(move || {
+            loop {
+                match (na, nb) {
+                    (Some((ka, va)), Some((kb, vb))) => {
+                        if ka == kb {
+                            // same key
+                            let out = if va == vb { None } else { Some(ka) };
+                            na = ia.next();
+                            nb = ib.next();
+                            if out.is_some() {
+                                return out;
+                            }
+                        } else if ka < kb {
+                            // key only in a
+                            let out = Some(ka);
+                            na = ia.next();
+                            return out;
                         } else {
-                            Some(ka)
-                        };
-                        na = ia.next();
-                        nb = ib.next();
-                        if out.is_some() {
+                            // key only in b
+                            let out = Some(kb);
+                            nb = ib.next();
                             return out;
                         }
-                    } else if ka < kb {
-                        // key only in a
-                        let out = Some(ka);
-                        na = ia.next();
-                        return out;
-                    } else {
-                        // key only in b
-                        let out = Some(kb);
-                        nb = ib.next();
-                        return out;
                     }
-                }
 
-                (Some((ka, _)), None) => {
-                    na = ia.next();
-                    return Some(ka);
-                }
+                    (Some((ka, _)), None) => {
+                        na = ia.next();
+                        return Some(ka);
+                    }
 
-                (None, Some((kb, _))) => {
-                    nb = ib.next();
-                    return Some(kb);
+                    (None, Some((kb, _))) => {
+                        nb = ib.next();
+                        return Some(kb);
+                    }
+                    (None, None) => return None,
                 }
-                (None, None) => return None,
             }
         })
     }
-
 }
 
 #[derive(Debug, Default)]
@@ -104,7 +101,6 @@ impl Dependants {
         Self(MultiBiMap::new())
     }
 }
-
 
 #[derive(Default, Debug)]
 pub struct Luaurc {
@@ -170,7 +166,6 @@ impl<'de> Deserialize<'de> for Luaurc {
 
 impl Luaurc {
     pub fn new<S: AsRef<str>>(contents: S) -> Self {
-        serde_json::from_str::<Luaurc>(contents.as_ref())
-            .unwrap_or_else(|_| Luaurc::default())
+        serde_json::from_str::<Luaurc>(contents.as_ref()).unwrap_or_else(|_| Luaurc::default())
     }
 }

@@ -1,4 +1,10 @@
-use std::{borrow::Borrow, collections::{btree_map::Entry, BTreeMap, HashSet}, fmt::Debug, hash::Hash, sync::Arc};
+use std::{
+    borrow::Borrow,
+    collections::{BTreeMap, HashSet, btree_map::Entry},
+    fmt::Debug,
+    hash::Hash,
+    sync::Arc,
+};
 
 mod mem;
 use mem::Wrapper;
@@ -8,17 +14,18 @@ pub use mem::Ref;
 #[derive(Debug, Default)]
 pub struct MultiBiMap<L, R> {
     pub left_to_right: BTreeMap<Ref<L>, HashSet<Ref<R>>>,
-    pub right_to_left: BTreeMap<Ref<R>, HashSet<Ref<L>>>
+    pub right_to_left: BTreeMap<Ref<R>, HashSet<Ref<L>>>,
 }
 
 impl<L, R> MultiBiMap<L, R>
 where
-    L: Eq + Hash + Debug + Ord, R: Eq + Hash + Debug + Ord,
+    L: Eq + Hash + Debug + Ord,
+    R: Eq + Hash + Debug + Ord,
 {
     pub fn new() -> Self {
         Self {
             left_to_right: BTreeMap::new(),
-            right_to_left: BTreeMap::new()
+            right_to_left: BTreeMap::new(),
         }
     }
 
@@ -26,10 +33,16 @@ where
         let left = Ref(Arc::new(left));
         let right = Ref(Arc::new(right));
 
-        let right_map = self.left_to_right.entry(left.clone()).or_insert(HashSet::new());
+        let right_map = self
+            .left_to_right
+            .entry(left.clone())
+            .or_insert(HashSet::new());
         right_map.insert(right.clone());
 
-        let left_map = self.right_to_left.entry(right.clone()).or_insert(HashSet::new());
+        let left_map = self
+            .right_to_left
+            .entry(right.clone())
+            .or_insert(HashSet::new());
         left_map.insert(left.clone());
 
         (left_map, right_map)
@@ -38,18 +51,22 @@ where
     pub fn insert_by_left(&mut self, left: L) -> &mut HashSet<Ref<R>> {
         let left = Ref(Arc::new(left));
 
-        self.left_to_right.entry(left.clone()).or_insert(HashSet::new())
+        self.left_to_right
+            .entry(left.clone())
+            .or_insert(HashSet::new())
     }
 
     pub fn insert_by_right(&mut self, right: R) -> &mut HashSet<Ref<L>> {
         let right = Ref(Arc::new(right));
 
-        self.right_to_left.entry(right.clone()).or_insert(HashSet::new())
+        self.right_to_left
+            .entry(right.clone())
+            .or_insert(HashSet::new())
     }
 
     pub fn remove_by_left(&mut self, left: L) {
         let left_ref = Ref(Arc::new(left));
-        
+
         if let Some(right_set) = self.left_to_right.get(&left_ref) {
             for right_ref in right_set.iter() {
                 if let Some(right_set) = self.right_to_left.get_mut(right_ref) {
@@ -58,17 +75,16 @@ where
                     } else {
                         right_set.remove(&left_ref);
                     }
-
                 }
             }
         }
-    
+
         self.left_to_right.remove(&left_ref);
     }
 
     pub fn remove_by_right(&mut self, right: R) {
         let right_ref = Ref(Arc::new(right));
-        
+
         if let Some(left_set) = self.right_to_left.get(&right_ref) {
             for left_ref in left_set.iter() {
                 if let Some(left_set) = self.left_to_right.get_mut(left_ref) {
@@ -77,11 +93,10 @@ where
                     } else {
                         left_set.remove(&right_ref);
                     }
-
                 }
             }
         }
-    
+
         self.right_to_left.remove(&right_ref);
     }
 
@@ -103,13 +118,13 @@ where
 
     pub fn entry_by_left(&mut self, left: L) -> Entry<'_, Ref<L>, HashSet<Ref<R>>> {
         let left = Ref(Arc::new(left));
-    
+
         self.left_to_right.entry(left)
     }
 
     pub fn entry_by_right(&mut self, right: R) -> Entry<'_, Ref<R>, HashSet<Ref<L>>> {
         let right = Ref(Arc::new(right));
-    
+
         self.right_to_left.entry(right)
     }
 
@@ -130,9 +145,8 @@ where
     }
 }
 
-
 /*
-    This MultiBiMap implementation is forked 
+    This MultiBiMap implementation is forked
     from billyrieger's bimap implementation.
 
     Permission is hereby granted, free of charge, to any

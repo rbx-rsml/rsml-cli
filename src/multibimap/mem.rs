@@ -1,5 +1,8 @@
 use core::{borrow::Borrow, fmt, ops::Bound};
-use std::{ops::{Deref, DerefMut}, sync::Arc};
+use std::{
+    ops::{Deref, DerefMut},
+    sync::Arc,
+};
 
 #[derive(Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Ref<T>(pub Arc<T>);

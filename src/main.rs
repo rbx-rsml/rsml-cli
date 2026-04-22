@@ -264,7 +264,10 @@ impl WatcherContext {
             } else if path.is_file() {
                 // Creates the .model.json for the current .rsml file.
                 if path.extension() == Some(OsStr::new("rsml")) {
-                    self.create_file(&dunce::canonicalize(&path).unwrap(), CreateFileDependencies::False);
+                    self.create_file(
+                        &dunce::canonicalize(&path).unwrap(),
+                        CreateFileDependencies::False,
+                    );
 
                 // Deletes .model.json file if it represents rsml as its considered stale.
                 } else if path.to_string_lossy().ends_with(".model.json")
@@ -288,7 +291,10 @@ impl WatcherContext {
 
             // Creates the .model.json for the current .rsml file.
             } else if path.is_file() && path.extension() == Some(OsStr::new("rsml")) {
-                self.create_file(&dunce::canonicalize(&path).unwrap(), CreateFileDependencies::False);
+                self.create_file(
+                    &dunce::canonicalize(&path).unwrap(),
+                    CreateFileDependencies::False,
+                );
             }
         }
     }
@@ -696,5 +702,4 @@ mod tests {
         // Clean up.
         let _ = fs::remove_dir_all(&temp);
     }
-
 }
