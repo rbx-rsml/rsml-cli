@@ -38,3 +38,9 @@ You can optionally define a different output directory and luaurc file path.
 rsml build <project_path> --output <output_path> --luaurc <luaurc_path>
 // rsml build /src --output /dist --luaurc /configs/.luaurc
 ```
+
+# Rojo Sourcemaps
+By default non script instances (including StyleSheet's) are omitted from rojo sourcemaps. To include them you need to use the `--include-non-scripts` flag:
+```
+rojo sourcemap --include-non-scripts
+```
