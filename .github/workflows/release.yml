@@ -5,16 +5,73 @@ on:
     tags: ["v*"]
 
 jobs:
-  create-release:
-    name: Create Release
+  preflight:
+    name: Preflight Checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Check Cargo.toml version matches tag
+        run: |
+          TAG="${{ github.ref_name }}"
+          CARGO_VERSION="v$(grep -m1 '^version' Cargo.toml | sed 's/.*"\(.*\)".*/\1/')"
+          if [ "$CARGO_VERSION" != "$TAG" ]; then
+            echo "::error::Cargo.toml version ($CARGO_VERSION) does not match tag ($TAG). Update the version in Cargo.toml before releasing."
+            exit 1
+          fi
+
+      - name: Check CHANGELOG.md has entry for this version
+        run: |
+          TAG="${{ github.ref_name }}"
+          if ! grep -q "^# $TAG" CHANGELOG.md; then
+            echo "::error::No changelog entry found for $TAG in CHANGELOG.md. Add a '# $TAG' section before releasing."
+            exit 1
+          fi
+
+      - name: Check release does not already exist
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "::error::Release $TAG already exists."
+            exit 1
+          fi
+
+  create-release:
+    name: Create Release
+    needs: preflight
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
       - name: Create Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create ${{ github.ref_name }} --draft --verify-tag --title ${{ github.ref_name }}
+          TAG="${{ github.ref_name }}"
+
+          CHANGELOG=$(awk -v tag="$TAG" '
+            BEGIN { found=0 }
+            /^# / {
+              if (found) exit
+              if ($0 == "# " tag) { found=1; next }
+            }
+            found { print }
+          ' CHANGELOG.md | sed '/./,$!d' | sed -e :a -e '/^\n*$/{$d;N;ba}')
+
+          if [ -z "$CHANGELOG" ]; then
+            echo "::error::Failed to extract changelog for $TAG"
+            exit 1
+          fi
+
+          CHANGELOG=$(printf '%s' "$CHANGELOG" | sed 's/^#/##/')
+
+          printf '%s\n' "$CHANGELOG" > /tmp/release_body.md
+
+          gh release create "$TAG" --draft --verify-tag --title "$TAG" --notes-file /tmp/release_body.md
 
   build:
     needs: ["create-release"]
