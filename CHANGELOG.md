@@ -1,3 +1,7 @@
+# v0.0.17
+## Features
+- Upgraded to `rbx-rsml` v1.0.1.
+
 # v0.0.16
 ## Fixes
 - Fixed crash on Windows where VFS event paths weren't canonicalized, causing a `StripPrefixError` during watch mode.

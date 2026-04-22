@@ -1,5 +1,7 @@
-use serde::de::{Deserialize};
-use std::{collections::{BTreeMap}, ops::{Deref, DerefMut}, path::PathBuf};
+use serde::de::Deserialize;
+use std::{collections::BTreeMap, ops::{Deref, DerefMut}, path::PathBuf};
+
+use rbx_rsml::types::LanguageMode;
 
 use crate::multibimap::MultiBiMap;
 
@@ -20,48 +22,9 @@ impl DerefMut for Aliases {
     }
 }
 
-impl<'de> Deserialize<'de> for Aliases {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        use serde::de::{MapAccess, Visitor};
-        use std::fmt;
-
-        struct AliasesVisitor;
-
-        impl<'de> Visitor<'de> for AliasesVisitor {
-            type Value = Aliases;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("a map with an 'aliases' key")
-            }
-
-            fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
-            where
-                M: MapAccess<'de>,
-            {
-                let mut aliases = None;
-                while let Some(key) = access.next_key::<String>()? {
-                    if key == "aliases" {
-                        aliases = Some(access.next_value()?);
-                    } else {
-                        let _: serde::de::IgnoredAny = access.next_value()?;
-                    }
-                }
-                let aliases = aliases.ok_or_else(|| serde::de::Error::missing_field("aliases"))?;
-                Ok(Aliases(aliases))
-            }
-        }
-
-        deserializer.deserialize_map(AliasesVisitor)
-    }
-}
-
 impl Aliases {
     pub fn new<S: AsRef<str>>(contents: S) -> Self {
-        serde_json::from_str::<Aliases>(contents.as_ref())
-            .unwrap_or_else(|_| Aliases::default())
+        Luaurc::new(contents).aliases
     }
 
     pub fn diff<'a>(
@@ -146,14 +109,68 @@ impl Dependants {
 #[derive(Default, Debug)]
 pub struct Luaurc {
     pub aliases: Aliases,
-    pub dependants: Dependants
+    pub dependants: Dependants,
+    pub language_mode: LanguageMode,
+}
+
+impl<'de> Deserialize<'de> for Luaurc {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::{MapAccess, Visitor};
+        use std::fmt;
+
+        struct LuaurcVisitor;
+
+        impl<'de> Visitor<'de> for LuaurcVisitor {
+            type Value = Luaurc;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a .luaurc configuration object")
+            }
+
+            fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
+            where
+                M: MapAccess<'de>,
+            {
+                let mut aliases = Aliases::default();
+                let mut language_mode = LanguageMode::default();
+
+                while let Some(key) = access.next_key::<String>()? {
+                    match key.as_str() {
+                        "aliases" => {
+                            let map: BTreeMap<String, String> = access.next_value()?;
+                            aliases = Aliases(map);
+                        }
+                        "languageMode" => {
+                            let value: serde_json::Value = access.next_value()?;
+                            language_mode = match value.as_str() {
+                                Some("strict") => LanguageMode::Strict,
+                                _ => LanguageMode::Nonstrict,
+                            };
+                        }
+                        _ => {
+                            let _: serde::de::IgnoredAny = access.next_value()?;
+                        }
+                    }
+                }
+
+                Ok(Luaurc {
+                    aliases,
+                    dependants: Dependants::new(),
+                    language_mode,
+                })
+            }
+        }
+
+        deserializer.deserialize_map(LuaurcVisitor)
+    }
 }
 
 impl Luaurc {
     pub fn new<S: AsRef<str>>(contents: S) -> Self {
-        Self {
-            aliases: Aliases::new(contents),
-            dependants: Dependants::new()
-        }
+        serde_json::from_str::<Luaurc>(contents.as_ref())
+            .unwrap_or_else(|_| Luaurc::default())
     }
 }

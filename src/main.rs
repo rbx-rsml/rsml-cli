@@ -161,16 +161,17 @@ impl WatcherContext {
     }
 
     fn luaurc_update(&mut self, luaurc_path: PathBuf) {
-        let new_aliases =
-            guarded_unwrap!(fs::read_to_string(&luaurc_path).map(Aliases::new), return);
+        let fresh_luaurc =
+            guarded_unwrap!(fs::read_to_string(&luaurc_path).map(Luaurc::new), return);
 
         let (_, luaurc) = guarded_unwrap!(self.luaurc.take(), return);
 
-        let diff = new_aliases.diff(&luaurc.aliases);
+        let diff = fresh_luaurc.aliases.diff(&luaurc.aliases);
 
         let new_luaurc = Luaurc {
-            aliases: Aliases(new_aliases.clone()),
+            aliases: Aliases(fresh_luaurc.aliases.0.clone()),
             dependants: luaurc.dependants,
+            language_mode: fresh_luaurc.language_mode,
         };
         self.luaurc = Some((luaurc_path, new_luaurc));
 
