@@ -198,6 +198,11 @@ fn convert_children(compiled: &mut CompiledRsml, children: Vec<usize>) -> Vec<Ch
                         Variant::Attributes(child.properties),
                     );
 
+                    properties.insert(
+                        "PropertyTransitionsSerialize".to_string(),
+                        Variant::Attributes(child.tweens),
+                    );
+
                     properties
                 },
 

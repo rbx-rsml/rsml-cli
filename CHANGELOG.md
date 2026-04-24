@@ -1,3 +1,8 @@
+# v0.0.18
+## Features
+- Upgraded `rbx-rsml` version:
+    - Fixed tweens not being compiled correctly.
+
 # v0.0.17
 ## Features
 - Upgraded to `rbx-rsml` v1.0.1.

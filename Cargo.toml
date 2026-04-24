@@ -1,11 +1,13 @@
 [package]
 name = "rsml-cli"
-version = "0.0.17"
+version = "0.0.18"
 edition = "2024"
 
 [dependencies]
-rbx-rsml = "1.0.1"
-rbx_types = "3.1.0"
+# rbx-rsml = "1.0.2"
+# rbx_types = "3.1.0"
+rbx-rsml = { path = "/Volumes/T7/rsml-new/rsml-rust-rewrite", features = ["compiler"] }
+rbx_types = { git = "https://github.com/cameronpcampbell/rbx-dom.git" }
 serde_json = "1.0.143"
 serde = "1.0.219"
 memofs = "0.3.0"
