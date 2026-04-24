@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 # rbx-rsml = "1.0.2"
 # rbx_types = "3.1.0"
-rbx-rsml = { path = "/Volumes/T7/rsml-new/rsml-rust-rewrite", features = ["compiler"] }
+rbx-rsml = { git = "https://github.com/rbx-rsml/rsml-rust.git", features = ["compiler"] }
 rbx_types = { git = "https://github.com/cameronpcampbell/rbx-dom.git" }
 serde_json = "1.0.143"
 serde = "1.0.219"
