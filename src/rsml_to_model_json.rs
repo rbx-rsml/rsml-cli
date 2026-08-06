@@ -157,7 +157,7 @@ fn resolve_derive(
     let mut path = resolve_derive_alias(content, current_path, luaurc);
     path.set_extension("rsml");
 
-    match path.canonicalize() {
+    match dunce::canonicalize(path) {
         Ok(canonicalized) => {
             if &canonicalized == current_path {
                 None
