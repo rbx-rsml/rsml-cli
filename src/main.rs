@@ -505,7 +505,7 @@ fn resolve_luaurc_path(
     luaurc_path: Option<PathBuf>,
 ) -> Result<LuaurcStatus, String> {
     if let Some(luaurc_path) = luaurc_path {
-        match luaurc_path.canonicalize() {
+        match dunce::canonicalize(&luaurc_path) {
             Ok(luaurc_path) => match luaurc_path.is_file() {
                 true => return Ok(LuaurcStatus::Some(luaurc_path)),
                 false => (),
