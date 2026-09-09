@@ -34,3 +34,59 @@ fn cli_build_with_relative_path_no_output() {
     // Clean up.
     let _ = fs::remove_dir_all(&temp);
 }
+
+#[test]
+fn cli_build_imports_macros_from_transitive_derives() {
+    let temp = std::env::temp_dir().join("rsml_test_cli_derived_macros");
+    let input = temp.join("src");
+    let theme = input.join("theme");
+    let output = temp.join("out");
+
+    let _ = fs::remove_dir_all(&temp);
+    fs::create_dir_all(&theme).unwrap();
+
+    fs::write(
+        theme.join("macros.rsml"),
+        r#"
+@macro Fade -> Construct {
+    BackgroundTransparency = 0.5;
+}
+"#,
+    )
+    .unwrap();
+    fs::write(theme.join("base.rsml"), "@derive \"./macros\";\n").unwrap();
+    fs::write(
+        input.join("app.rsml"),
+        r#"
+@derive "./theme/base";
+
+Frame {
+    Fade!();
+}
+"#,
+    )
+    .unwrap();
+
+    Command::cargo_bin("rsml-cli")
+        .unwrap()
+        .args([
+            "build",
+            input.to_str().unwrap(),
+            "--output",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let content: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(output.join("app.model.json")).unwrap()).unwrap();
+
+    assert!(
+        content["children"][0]["properties"]["PropertiesSerialize"]["Attributes"]
+            .get("BackgroundTransparency")
+            .is_some(),
+        "expected the macro from the transitive derive to be expanded: {content:#}"
+    );
+
+    let _ = fs::remove_dir_all(&temp);
+}

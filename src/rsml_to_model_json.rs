@@ -95,20 +95,33 @@ enum Child {
     StyleDerive(StyleDerive),
 }
 
-fn extract_derive_paths(source: &str) -> Vec<String> {
+struct ExtractedDerive {
+    path: String,
+    imports_all_macros: bool,
+}
+
+fn extract_derives(source: &str) -> Vec<ExtractedDerive> {
     let parsed = RsmlParser::from_source(source);
     parsed
         .ast
         .iter()
         .filter_map(|c| {
             if let Construct::Derive {
-                body: Some(body), ..
+                body: Some(body),
+                with_clause,
+                ..
             } = c
             {
                 if let Construct::Node { node } = body.as_ref() {
                     return match node.token.value() {
-                        Token::StringSingle(s) => Some(s.to_string()),
-                        Token::StringMulti(ms) => Some(ms.content.to_string()),
+                        Token::StringSingle(s) => Some(ExtractedDerive {
+                            path: s.to_string(),
+                            imports_all_macros: with_clause.is_none(),
+                        }),
+                        Token::StringMulti(ms) => Some(ExtractedDerive {
+                            path: ms.content.to_string(),
+                            imports_all_macros: with_clause.is_none(),
+                        }),
                         _ => None,
                     };
                 }
@@ -212,49 +225,70 @@ fn convert_children(compiled: &mut CompiledRsml, children: Vec<usize>) -> Vec<Ch
         .collect::<Vec<Child>>()
 }
 
-fn track_derive_dependencies(
+fn collect_derive_macro_sources(
     derive_path: PathBuf,
-    path: &Path,
+    imports_all_macros: bool,
+    root_path: &Path,
     already_tracked: &mut HashSet<PathBuf>,
+    macro_sources: &mut Vec<String>,
     watcher: &mut WatcherContext,
 ) {
+    if !already_tracked.insert(derive_path.clone()) {
+        return;
+    }
+
+    watcher
+        .dependencies
+        .insert(root_path.to_path_buf(), derive_path.clone());
+
     if let Ok(derive_content) = fs::read_to_string(&derive_path) {
-        let derives = extract_derive_paths(&derive_content);
+        if imports_all_macros {
+            macro_sources.push(derive_content.clone());
+        }
+
+        let derives = extract_derives(&derive_content);
         for derive in derives {
             let derive_path = guarded_unwrap!(
-                resolve_derive(&derive, path, watcher.luaurc.as_mut()),
+                resolve_derive(&derive.path, &derive_path, watcher.luaurc.as_mut()),
                 continue
             );
 
-            if already_tracked.contains(&derive_path) {
-                continue;
-            }
-
-            track_derive_dependencies(derive_path.clone(), path, already_tracked, watcher);
-
-            already_tracked.insert(derive_path);
+            collect_derive_macro_sources(
+                derive_path,
+                imports_all_macros && derive.imports_all_macros,
+                root_path,
+                already_tracked,
+                macro_sources,
+                watcher,
+            );
         }
     }
-
-    watcher.dependencies.insert(path.to_path_buf(), derive_path);
 }
 
-pub fn rsml_to_model_json(path: &Path, watcher: &mut WatcherContext) -> String {
+pub fn rsml_to_model_json(path: &Path, watcher: &mut WatcherContext) -> Option<String> {
     let content = fs::read_to_string(path).unwrap();
 
-    let derive_strings = extract_derive_paths(&content);
+    let derives = extract_derives(&content);
 
-    let mut already_tracked: HashSet<PathBuf> = HashSet::new();
+    let mut already_tracked = HashSet::from([path.to_path_buf()]);
+    let mut derived_macro_sources = Vec::new();
 
-    let derives_children = derive_strings
+    let derives_children = derives
         .iter()
         .filter_map(|derive| {
             let derive_path = guarded_unwrap!(
-                resolve_derive(&derive, path, watcher.luaurc.as_mut()),
+                resolve_derive(&derive.path, path, watcher.luaurc.as_mut()),
                 return None
             );
 
-            track_derive_dependencies(derive_path.clone(), path, &mut already_tracked, watcher);
+            collect_derive_macro_sources(
+                derive_path.clone(),
+                derive.imports_all_macros,
+                path,
+                &mut already_tracked,
+                &mut derived_macro_sources,
+                watcher,
+            );
 
             Some(Child::StyleDerive(StyleDerive {
                 name: derive_path
@@ -273,7 +307,14 @@ pub fn rsml_to_model_json(path: &Path, watcher: &mut WatcherContext) -> String {
         })
         .collect::<Vec<Child>>();
 
-    let mut compiled = RsmlCompiler::from_source(&content);
+    let mut compiled = RsmlCompiler::from_source_with_macro_sources(
+        &content,
+        derived_macro_sources.iter().map(String::as_str),
+    );
+
+    if compiled.is_static {
+        return None;
+    }
 
     let rsml_root = compiled.take_root().unwrap();
 
@@ -296,5 +337,5 @@ pub fn rsml_to_model_json(path: &Path, watcher: &mut WatcherContext) -> String {
     let mut buffer = Vec::new();
     let mut serializer = JsonSerializer::with_formatter(&mut buffer, formatter);
     style_sheet.serialize(&mut serializer).unwrap();
-    String::from_utf8(buffer).unwrap()
+    Some(String::from_utf8(buffer).unwrap())
 }

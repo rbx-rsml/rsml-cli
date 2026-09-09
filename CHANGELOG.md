@@ -1,3 +1,7 @@
+# Unreleased
+## Fixes
+- Restored macro imports from direct and transitive `@derive` dependencies.
+
 # v0.0.18
 ## Features
 - Upgraded `rbx-rsml` version:

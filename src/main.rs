@@ -134,8 +134,12 @@ impl WatcherContext {
 
         let _ = fs::create_dir_all(&output_path.parent().unwrap());
 
-        let model_json = rsml_to_model_json(&path, self);
-        fs::write(output_path, model_json).unwrap();
+        match rsml_to_model_json(&path, self) {
+            Some(model_json) => fs::write(output_path, model_json).unwrap(),
+            None => {
+                let _ = fs::remove_file(output_path);
+            }
+        }
 
         match create_dependencies {
             CreateFileDependencies::True(referent_path) => {
@@ -700,6 +704,83 @@ mod tests {
         assert_eq!(content["className"], "StyleSheet");
 
         // Clean up.
+        let _ = fs::remove_dir_all(&temp);
+    }
+
+    #[test]
+    fn build_skips_model_json_for_static_files() {
+        let temp = std::env::temp_dir().join("rsml_test_build_static");
+        let input = temp.join("src");
+        let output = temp.join("out");
+
+        let _ = fs::remove_dir_all(&temp);
+        fs::create_dir_all(&input).unwrap();
+        fs::create_dir_all(&output).unwrap();
+
+        fs::write(input.join("test.rsml"), "--!static\n").unwrap();
+
+        // Pre-create a stale .model.json that should be removed.
+        let model_json_path = output.join("test.model.json");
+        fs::write(&model_json_path, "{\"id\":\"stale.rsml\"}").unwrap();
+
+        let vfs = Vfs::new(StdBackend::new());
+        let mut context = WatcherContext::new(vfs, &input, &output, None);
+        context.initialize();
+
+        assert!(
+            !model_json_path.exists(),
+            "Expected {:?} to NOT exist for a static .rsml file",
+            model_json_path
+        );
+
+        let _ = fs::remove_dir_all(&temp);
+    }
+
+    #[test]
+    fn derived_macro_changes_rebuild_dependants() {
+        let temp = std::env::temp_dir().join("rsml_test_derived_macro_rebuild");
+        let input = temp.join("src");
+        let output = temp.join("out");
+
+        let _ = fs::remove_dir_all(&temp);
+        fs::create_dir_all(&input).unwrap();
+        fs::create_dir_all(&output).unwrap();
+
+        let macros_path = input.join("macros.rsml");
+        fs::write(
+            &macros_path,
+            "@macro Fade -> Construct { BackgroundTransparency = 0.5; }\n",
+        )
+        .unwrap();
+        fs::write(
+            input.join("app.rsml"),
+            "@derive \"./macros\";\nFrame { Fade!(); }\n",
+        )
+        .unwrap();
+
+        let vfs = Vfs::new(StdBackend::new());
+        let mut context = WatcherContext::new(vfs, &input, &output, None);
+        context.initialize();
+
+        fs::write(
+            &macros_path,
+            "@macro Fade -> Construct { BackgroundTransparency = 0.75; }\n",
+        )
+        .unwrap();
+        context.create_file(
+            &dunce::canonicalize(&macros_path).unwrap(),
+            CreateFileDependencies::True(None),
+        );
+
+        let content: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(output.join("app.model.json")).unwrap())
+                .unwrap();
+        assert_eq!(
+            content["children"][0]["properties"]["PropertiesSerialize"]["Attributes"]["BackgroundTransparency"]
+                ["Float64"],
+            0.75
+        );
+
         let _ = fs::remove_dir_all(&temp);
     }
 }
