@@ -1,4 +1,4 @@
-# Unreleased
+# v0.0.19
 ## Fixes
 - Restored macro imports from direct and transitive `@derive` dependencies.
 
