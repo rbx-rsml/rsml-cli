@@ -158,7 +158,10 @@ fn resolve_derive_alias(
         }
     };
 
-    current_path.join("../").join(path)
+    current_path
+        .parent()
+        .unwrap_or_else(|| Path::new(""))
+        .join(path)
 }
 
 fn resolve_derive(
@@ -338,4 +341,19 @@ pub fn rsml_to_model_json(path: &Path, watcher: &mut WatcherContext) -> Option<S
     let mut serializer = JsonSerializer::with_formatter(&mut buffer, formatter);
     style_sheet.serialize(&mut serializer).unwrap();
     Some(String::from_utf8(buffer).unwrap())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn relative_derives_resolve_from_the_current_files_parent() {
+        let current_path = Path::new("project").join("src").join("app.rsml");
+
+        assert_eq!(
+            resolve_derive_alias("./macros", &current_path, None),
+            Path::new("project").join("src").join("macros")
+        );
+    }
 }
